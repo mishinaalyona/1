@@ -1,0 +1,57 @@
+rm(list=ls())
+library(rnoaa)
+library(dplyr)
+library(ggplot2) 
+library(tidyverse)
+library(lubridate)
+station_data = read.csv("station_data.csv")
+#После получения списка всех станций, получите список станций ближайших к столице вашего региона,создав таблицу с именем региона и координатами его столицы
+krasnodar = data.frame(id = "KRASNODAR", latitude = 45.13382, longitude = 38.94730)
+krasnodar_around = meteo_nearby_stations(lat_lon_df = krasnodar, station_data = station_data,
+                                    limit = 19, var = c("PRCP", "TAVG"),
+                                    year_min = 2003, year_max = 2005)
+#krasnodar_around это список единственным элементом которого является таблица, содержащая идентификаторы метеостанций отсортированных по их 
+# удаленности от Краснодара, очевидно что первым элементом таблицы будет идентификатор метеостанции Тулы, его то мы и попытаемся получить
+krasnodar_id = krasnodar_around[["KRASNODAR"]][["id"]][1]
+#Получим все данные с метеостанции
+all_krasnodar_data = meteo_tidy_ghcnd(stationid = krasnodar_id)
+#Чтобы получить таблицу всех метеостанций вокруг Краснодара нужно выбрать целиком первый объект из списка
+krasnodar_table = krasnodar_around[[1]]
+summary(krasnodar_table)
+#Нужно создать цикл, в котором бы скачивались  нужные данные для всех метеостанций из созданного списка
+#Создадим промежуточный объект, куда будем скачивать данные с конкретной метеостанции
+all_i = data.frame()
+#Создадим объект, куда скачаем все данные всех метеостанций
+all_krasnodar = data.frame()
+#Цикл для всех метеостанций
+for(i in 1:19) 
+{all_i  = meteo_tidy_ghcnd(stationid =  krasnodar_around[["KRASNODAR"]][["id"]][i])
+all_i = all_i[ ,c("id","date","tavg")] 
+print(all_i)
+all_krasnodar=rbind(all_krasnodar, all_i)}
+#Рассчитаем среднюю сумму активных температур для 19 метеостанций, для Краснодарского края  за 2004 год
+all_krasnodar$tavg[is.na(all_krasnodar$tavg)]=0
+data_krasnodar = all_i %>% 
+  mutate(date=ymd(date),
+         year=year(date),
+         month=month(date)) %>%
+  mutate(tavg=case_when(tavg<50 ~ 0,tavg>300 ~ 0, TRUE ~ tavg/10)) %>% 
+  filter (year>2003 & year < 2005) %>% 
+  group_by(id,year,month) %>% 
+  summarize(tsum=sum(tavg, na.rm=T)) %>%
+  group_by(month) %>% summarize(St = mean(tsum, na.rm=T))
+ afi=c(0.00,0.00,0.00,32.11,26.31,25.64,23.20,18.73,16.30,13.83,0.00,0.00)
+bfi=c(0.00,0.00,0.00,11.30,9.26,9.03,8.16,6.59,5.73,4.87,0.00,0.00)
+dfi=c(0.00,0.00,0.00,0.33,1.00,1.00,1.00,0.32,0.00,0.00,0.00,0.00)
+y=1.0
+Kf=300
+Qj=1600
+Lj=2.2
+Ej=25
+#Рассчитаем урожайность по месяцам
+data_krasnodar = data_krasnodar%>% 
+  mutate(Fi=(afi+(bfi*y*data_krasnodar$St)))
+data_krasnodar= data_krasnodar %>% mutate(Yj=(((data_krasnodar$Fi)*(dfi)*Kf)/(Qj*Lj*(100-Ej))))
+#Расчитываем суммарную урожайность как сумму по месяцам
+YIELD=sum(data_krasnodar$Yj);YIELD
+# Ответ: 17,1 ц/га
